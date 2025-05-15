@@ -1,2 +1,10 @@
-# Blood-Cells-images-classification
+# Blood Cells images classification
 The use of statistical learning is growing in medicine as a diagnostic support tool. This work focuses on classifying white blood cells—key for early diagnosis of leukemia and other diseases—using convolutional neural networks, with and without transfer learning. Conformal prediction was applied to estimate class uncertainty.
+# Overview
+Laboratory analyses—ranging from the most basic to the most complex—are among the most valuable tools for the early diagnosis of diseases. Blood tests, in particular, can help identify potential anomalies both in the values of various blood components and in the morphology of blood cells. For example, leukemia can cause changes in the morphology of lymphocytes, while certain bone marrow disorders can lead to abnormalities in the shape of white blood cell nuclei.
+
+Correctly identifying the shape of white blood cells is therefore crucial. With this goal in mind, three deep learning methods were developed to automate the classification process. Specifically, three convolutional neural networks (CNNs) were implemented: one standard CNN and two using transfer learning techniques.
+
+The predictive performance of all three networks was evaluated on a test set containing images of different types of white blood cells. These images were of lower quality compared to those in the training set. The dataset was originally designed to enable accurate classification of images obtained from low-quality microscopes or even smartphone cameras, rather than professional imaging devices. However, this aspect was not explored in detail in this article.
+
+In the medical field, machine learning is a powerful tool for supporting the decision-making of doctors and healthcare professionals. In this context, providing only a point estimate of a prediction may be limiting and not sufficiently informative. For this reason, conformal prediction techniques were applied—exclusively to the standard CNN model—to provide, on a reduced test set, a set of likely classes rather than a single predicted class with the highest probability. This approach helps better quantify uncertainty and supports more informed clinical decisions.
