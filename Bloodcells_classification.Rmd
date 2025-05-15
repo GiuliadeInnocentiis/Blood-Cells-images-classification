@@ -1,0 +1,834 @@
+---
+title: "Progetto Statistical learning"
+author: "Giulia de Innocentiis mat.865084"
+date: "31-01-2025"
+output: html_document
+---
+
+## **Cellule del sangue: classificazione tramite immagini**
+
+### **Sommario**
+
+L'utilizzo dei metodi di statistical learning si sta diffondendo sempre di più ambito medico, vista la loro potenza come strumento di supporto diagnostico per i medici. In questo articolo ci si è focalizzati sulla classificazione dei tipi di globuli bianchi presenti nelle cellule del sangue, analisi fondamentale per la diagnosi precoce di leucemie, malattie autoimmuni e infezioni batteriche. Per la classificazione sono state usate come metodo principale le reti neurali convoluzionali, sia nella loro versione classica, sia con l'utilizzo di metodi di transfer learning. In generale, sono stati ottenuti risultati ottimi con tutte le reti sviluppate, con leggeri miglioramenti tramite l'utilizzo del transfer learning e ampia capacità di generalizzazione. Infine sono stati applicati degli approcci di conformal prediction per fornire stime intervallari della classe di appartenza.
+
+### **Introduzione**
+
+Le analisi di laboratorio, dalle più banali alle più complesse sono uno degli strumenti più utili per la diagnosi precoce di malattie. Tramite gli esami del sangue è infatti possibile individuare possibili anomalie sia tra i valori osservati di diversi elementi presenti nel sangue, sia riguardanti la morfologia delle cellule del sangue stesse. Ad esempio le leucemie provocano cambiamenti nella morfologia dei linfociti, mentre alcune malattie del midollo osseo provocano anomalie nella forma del nucleo dei globuli bianchi. L'identificazione della forma corretta dei globuli bianchi diventa quindi fondamentale ed in quest'ottica si sono sviluppati tre metodi di deep learning per l'automazione di questo processo. Si sono sviluppate tre reti neurali convoluzionali: una classica e le altre due utilizzando metodi di transfer learning. Per tutte e tre è stata analizzata la capacità previsiva su un test set contenente immagini per le diverse tipologie di globuli bianchi di interesse ma di qualità peggiore rispetto alle immagini del dataset di training. Lo scopo con cui è stato originariamente creato il dataset utiliizzato era la classificazione ottimale di immagini provenienti da microscopi di bassa qualità o da immagini catturate tramite fotocamere dei telefoni, quindi non professionali. Quest'ultimo aspetto non è stato però approfondito in questo articolo.
+
+In ambito medico l'uso del machine learning è molto utile per il supporto delle decisioni di medici e operatori sanitari. In quest'ottica fornire una stima puntuale della previsione può risultare riduttivo e non abbastanza informativo. Per questo motivo, solo sulla rete CNN classica, si è utilizzato l'approccio di conformal prediction e si è fornito, per un test set ridotto , l'insieme delle classi stimate di appartenza invece che solo la stima puntuale della classe stimata con probabilità più alta.
+
+### **Materiali**
+
+Il dataset utilizzato per queste analisi è stato preso da: <http://dl.raabindata.com/WBC/Cropped_double_labeled/>.
+
+Il dataset contiene immagini provenienti da 72 strisci di sangue perifico di individui maschi e femmine, con un'eta dai 12 ai 70 anni raccolte all'ospedale di Shariati a Teheran. Il dataset è suddiviso in un training set e in due test set, di cui ne è stato considerato soltanto uno, il TestA. Le immagini del TestA, per lo scopo con cui è stato creato il dataset, sono leggermente meno nitide e di qualità minore rispetto alle immagini del training set. La variabile target è la tipologia di globulo bianco rappresentato dall'immagine e può assumere 5 valori:
+
+-   *basophil;*
+
+-   *eosinophil;*
+
+-   *neutrophil;*
+
+-   *monocyte;*
+
+-   *lymphocyte.*
+
+Il dataset di training originale contiene 10197 osservazioni mentre il test ne contiene 4339 . Per svolgere le analisi è stato suddiviso ulteriormente il training originale in 7119 osservazioni di training e 3078 osservazioni di validation. Si sono caricate le immagini creando delle directory apposite e suddividendo le directory in base alla classe di appartenenza.
+
+```{r, eval=FALSE}
+library(keras)
+library(caret)
+path<-"C:/Users/giuli/OneDrive/Desktop/Blood cells"
+
+base_dir <- paste(path, "blood", sep="")
+dir.create(base_dir)
+
+train_dir <- file.path(base_dir, "train")
+dir.create(train_dir)
+
+validation_dir <- file.path(base_dir, "validation")
+dir.create(validation_dir)
+
+test_dir <- file.path(base_dir, "test")
+dir.create(test_dir)
+#train
+train_neutrophil_dir <- file.path(train_dir, "neutrophil")
+dir.create(train_neutrophil_dir)
+
+train_monocyte_dir <- file.path(train_dir, "monocyte")
+dir.create(train_monocyte_dir)
+
+train_lymphocyte_dir <- file.path(train_dir, "lymphocyte")
+dir.create(train_lymphocyte_dir)
+
+train_eosinophil_dir <- file.path(train_dir, "eosinophil")
+dir.create(train_eosinophil_dir)
+
+train_basophil_dir <- file.path(train_dir, "basophil")
+dir.create(train_basophil_dir)
+
+#validation
+validation_neutrophil_dir <- file.path(validation_dir, "neutrophil")
+dir.create(validation_neutrophil_dir)
+
+validation_monocyte_dir <- file.path(validation_dir, "monocyte")
+dir.create(validation_monocyte_dir)
+
+validation_lymphocyte_dir <- file.path(validation_dir, "lymphocyte")
+dir.create(validation_lymphocyte_dir)
+
+validation_eosinophil_dir <- file.path(validation_dir, "eosinophil")
+dir.create(validation_eosinophil_dir)
+
+validation_basophil_dir <- file.path(validation_dir, "basophil")
+dir.create(validation_basophil_dir)
+
+#test
+
+test_neutrophil_dir <- file.path(test_dir, "neutrophil")
+dir.create(test_neutrophil_dir)
+
+test_monocyte_dir <- file.path(test_dir, "monocyte")
+dir.create(test_monocyte_dir)
+
+test_lymphocyte_dir <- file.path(test_dir, "lymphocyte")
+dir.create(test_lymphocyte_dir)
+
+test_eosinophil_dir <- file.path(test_dir, "eosinophil")
+dir.create(test_eosinophil_dir)
+
+test_basophil_dir <- file.path(test_dir, "basophil")
+dir.create(test_basophil_dir)
+
+#Directory originali per il training
+
+basophil_dataset_dir <- paste(path,"/Train/basophil", sep="") 
+eosinophil_dataset_dir <- paste(path,"/Train/eosinophil", sep="") 
+lymphocyte_dataset_dir <- paste(path,"/Train/lymphocyte", sep="") 
+monocyte_dataset_dir <- paste(path,"/Train/monocyte", sep="") 
+neutrophil_dataset_dir <- paste(path,"/Train/neutrophil", sep="") 
+
+#Directory originali per il test
+basophil_dataset_dir_t <- paste(path,"/TestA/basophil", sep="") 
+eosinophil_dataset_dir_t <- paste(path,"/TestA/eosinophil", sep="") 
+lymphocyte_dataset_dir_t <- paste(path,"/TestA/lymphocyte", sep="") 
+monocyte_dataset_dir_t <- paste(path,"/TestA/monocyte", sep="") 
+neutrophil_dataset_dir_t <- paste(path,"/TestA/neutrophil", sep="")
+
+```
+
+Si inseriscono le immagini nelle cartelle appena create, utilizzando come training il 70% delle osservazioni disponibili per classe, per il validation il 30%, mentre per il test tutte le immagini disponibili contenute nel dataset TestA. Per farlo si è dovuto prima rinominare le immagini in quanto presentavano dei nomi non indicizzati e quindi risultava difficile creare delle suddivisioni interne.
+
+```{r, eval=FALSE}
+
+fnames <- paste0("BA_", 1:148, ".jpg")
+file.copy(file.path(basophil_dataset_dir, fnames),
+          file.path(train_basophil_dir))
+
+fnames <- paste0("BA_", 149:212, ".jpg")
+file.copy(file.path(basophil_dataset_dir, fnames),
+          file.path(validation_basophil_dir))
+
+fnames <- paste0("BA_", 1:89, ".jpg")
+file.copy(file.path(basophil_dataset_dir_t, fnames),
+          file.path(test_basophil_dir))
+
+fnames <- paste0("EO_", 1:520, ".jpg")
+file.copy(file.path(eosinophil_dataset_dir, fnames),
+          file.path(train_eosinophil_dir))
+
+fnames <- paste0("EO_", 521:744, ".jpg")
+file.copy(file.path(eosinophil_dataset_dir, fnames),
+          file.path(validation_eosinophil_dir))
+fnames <- paste0("EO_", 1:322, ".jpg")
+file.copy(file.path(eosinophil_dataset_dir_t, fnames),
+          file.path(test_eosinophil_dir))
+
+fnames <- paste0("LY_", 1:1698, ".jpg")
+file.copy(file.path(lymphocyte_dataset_dir, fnames),
+          file.path(train_lymphocyte_dir))
+
+fnames <- paste0("LY_", 1698:2427, ".jpg")
+file.copy(file.path(lymphocyte_dataset_dir, fnames),
+          file.path(validation_lymphocyte_dir))
+
+fnames <- paste0("LY_", 1:1034, ".jpg")
+file.copy(file.path(lymphocyte_dataset_dir_t, fnames),
+          file.path(test_lymphocyte_dir))
+
+fnames <- paste0("SNE_", 1:4361, ".jpg")
+file.copy(file.path(neutrophil_dataset_dir, fnames),
+          file.path(train_neutrophil_dir))
+
+fnames <- paste0("SNE_", 4361:6231, ".jpg")
+file.copy(file.path(neutrophil_dataset_dir, fnames),
+          file.path(validation_neutrophil_dir))
+fnames <- paste0("SNE_", 1:2660, ".jpg")
+file.copy(file.path(neutrophil_dataset_dir_t, fnames),
+          file.path(test_neutrophil_dir))
+
+fnames <- paste0("MO_", 1:392, ".jpg")
+file.copy(file.path(monocyte_dataset_dir, fnames),
+          file.path(train_monocyte_dir))
+
+fnames <- paste0("MO_", 393:561, ".jpg")
+file.copy(file.path(monocyte_dataset_dir, fnames),
+          file.path(validation_monocyte_dir))
+fnames <- paste0("MO_",1:234, ".jpg")
+file.copy(file.path(monocyte_dataset_dir_t, fnames),
+          file.path(test_monocyte_dir))
+```
+
+Si può notare che, in tutti e tre i set, le classi sono fortemente sbilanciate; si hanno infatti moltissime immagini per le classi "*neutrophil*" e "*lymphocyte*", con rispettivamente 4361 e 1697 immagini di training, e poche immagini per le classi *"basophil"* e *"monocyte"*. In particolare per la classe "*basophil*" sono presenti soltanto 148 immagini nel training e per la classe "*monocyte*" soltanto 392. Per la classe "*eosinophil*" si ha un valore intermedio con 520 immagini di training.
+
+Di seguito un esempio delle immagini presenti nel dataset
+
+```{r, eval=FALSE}
+library(magick)
+
+# Carica le immagini
+img1 <- file.path(train_dir, "basophil/BA_1.jpg")
+img2 <- file.path(train_dir, "eosinophil/EO_1.jpg")
+img3 <- file.path(train_dir, "neutrophil/SNE_1.jpg")
+img4 <- file.path(train_dir, "monocyte/MO_1.jpg")
+img5 <- file.path(train_dir, "lymphocyte/LY_1.jpg")
+
+img_path<-c(img1,img2,img3,img4, img5)
+
+op <- par(mfrow = c(2, 3), pty = "s", mar = c(1, 0, 1, 0))
+titles<-c("Basophil", "Eosinophil", "Neutrophil", "Monocyte", "Lymphocyte")
+for (i in 1:5) {
+  img <- image_load(img_path[i], target_size = c(200,200))
+  img_array <- image_to_array(img)
+  img_array <- array_reshape(img_array, c(1, 200,200, 3))
+  
+  augmentation_generator <- flow_images_from_data(
+    img_array,
+    generator = datagen,
+    batch_size = 1
+  )
+  batch <- generator_next(augmentation_generator)
+  plot(as.raster(batch[1,,,]))
+  title(main = titles[i], cex.main = 1.5, col.main = "black")
+} 
+```
+
+![Tipologie di globuli bianchi](esempio%20cellule.png)
+
+### **Metodi e risultati**
+
+Per l'analisi di classificazione sono state applicate tre reti neurali deep differenti.
+
+#### **CNN classica**
+
+Come primo approccio è stata utilizzata una rete convoluzionate di tipo deep.
+
+Per prima cosa si sono rese le immagini disponibili in un formato utilizzabile dalle reti neurali, riducendo la dimensione dell'immagini a 200x200.
+
+```{r, eval=FALSE}
+train_datagen <- image_data_generator(rescale = 1/255)
+validation_datagen <- image_data_generator(rescale = 1/255)
+
+train_generator <- flow_images_from_directory(
+  train_dir,
+  train_datagen,
+  target_size = c(200, 200),
+  batch_size = 150,
+  class_mode = "categorical"
+)
+
+
+validation_generator <- flow_images_from_directory(
+  validation_dir,
+  validation_datagen,
+  target_size = c(200, 200),
+  batch_size = 150,
+  class_mode = "categorical"
+)
+
+```
+
+Si sono creati gli oggetti "train_datagen" e "validation_datagen", che si occupano di normalizzare i valori dei pixel delle immagini in modo che siano compresi tra 0 e 1, dopodichè si sono caricate le immagini nella directory. Inoltre viene specificato, tramite il comando batch_size, che verranno caricate 150 immagini alla volta. Tramite class_mode="Categorical" viene specificato che il problema è di tipo multiclasse.
+
+Dopodichè è stata costruita le rete neurale con la seguente architettura:
+
+```{r, eval=FALSE}
+model <- keras_model_sequential() %>%
+  layer_conv_2d(filters = 32, kernel_size = c(3, 3), activation = "relu", input_shape = c(200, 200, 3)) %>%
+  layer_conv_2d(filters = 64, kernel_size = c(3, 3), activation = "relu") %>%
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>%
+  layer_conv_2d(filters = 64, kernel_size = c(3, 3), activation = "relu") %>%
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>%
+  layer_conv_2d(filters = 128, kernel_size = c(3, 3), activation = "relu") %>%
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>%
+  layer_conv_2d(filters = 128, kernel_size = c(3, 3), activation = "relu") %>%
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>%
+  layer_flatten() %>%
+  layer_dense(units = 256, activation = "relu") %>%
+  layer_dropout(0.5) %>%
+  layer_dense(units = 128, activation = "relu") %>%
+  layer_dropout(0.5)%>%
+  layer_dense(units = 64, activation = "relu") %>%
+  layer_dropout(0.5)%>%
+  layer_dense(units = 5, activation = "softmax")
+summary(model)
+```
+
+```         
+Model: "sequential"
+_____________________________________________________________________________________________
+ Layer (type)                            Output Shape                          Param #       
+=============================================================================================
+ conv2d_4 (Conv2D)                       (None, 198, 198, 32)                  896           
+ conv2d_3 (Conv2D)                       (None, 196, 196, 64)                  18496         
+ max_pooling2d_3 (MaxPooling2D)          (None, 98, 98, 64)                    0             
+ conv2d_2 (Conv2D)                       (None, 96, 96, 64)                    36928         
+ max_pooling2d_2 (MaxPooling2D)          (None, 48, 48, 64)                    0             
+ conv2d_1 (Conv2D)                       (None, 46, 46, 128)                   73856         
+ max_pooling2d_1 (MaxPooling2D)          (None, 23, 23, 128)                   0             
+ conv2d (Conv2D)                         (None, 21, 21, 128)                   147584        
+ max_pooling2d (MaxPooling2D)            (None, 10, 10, 128)                   0             
+ flatten (Flatten)                       (None, 12800)                         0             
+ dense_3 (Dense)                         (None, 256)                           3277056       
+ dropout_2 (Dropout)                     (None, 256)                           0             
+ dense_2 (Dense)                         (None, 128)                           32896         
+ dropout_1 (Dropout)                     (None, 128)                           0             
+ dense_1 (Dense)                         (None, 64)                            8256          
+ dropout (Dropout)                       (None, 64)                            0             
+ dense (Dense)                           (None, 5)                             325           
+=============================================================================================
+Total params: 3596293 (13.72 MB)
+Trainable params: 3596293 (13.72 MB)
+Non-trainable params: 0 (0.00 Byte)
+_____________________________________________________________________________________________
+```
+
+Per la parte della rete riguardante l'estrazione di informazioni dalle immagini di input si sono utilizzati 5 layer convoluzionali, in ognuno dei quali sono stati applicati dei kernel di dimensione 3x3 con stride pari a 1 e senza padding. Successivamente ad ogni layer convoluzionale è stato applicato un layer di max pooling. Partendo da così tante immagini la riduzione della dimensionalià è uno step fondalmentale e per avere una riduzione importante delle dimensioni senza ulteriore sforzo computazionale (senza ottimizzazione di altri pesi) è possibile applicare la tecnica di pooling.
+
+Dopodiche è presente un layer_flatten che si occupa di trasformare i tensori 4-dimensionali in cui sono immaginazzinate le immagini in tensori 2-dimensionali, adatti per essere processati da qualsiasi metodo di statistical learning. In questo caso si è utilizzata una rete neurale feed forward di tipo deep come modello di classificazione. Si sono utilizzati tre hidden layer: ognuno con funzione di attivazione *ReLu* e con, rispettivamente, 256,128,64 nodi per layer. A seguire ogni layer denso è stato applicato un layer di dropout. Infine è presente il layer di output in cui ci sono 5 nodi, come il numero delle classi di globuli bianchi, e funzione di attivazione *softmax.*
+
+Infine si è allenato il modello utilizzando come funzione di loss, essendo un problema di classificazione multiclasse, la cross_entropy e come metodo di ottimizzazione dei pesi Adam, che gestisce il parametro di learning rate all'interno dell'algoritmo di gradient descent ed è utile per evitare l'overfitting. Come metrica di valutazione del modello è stata utilizzata l'accuracy.
+
+```{r, eval=FALSE}
+model %>% compile(
+  loss = "categorical_crossentropy",
+  optimizer = "adam",
+  metrics = c("acc")
+)
+
+history <- model %>% fit(
+  train_generator,
+  batch_size=150,
+  epochs = 15,
+  validation_data = validation_generator,
+  validation_split=0.3
+)
+plot(history)
+```
+
+![Andamento Loss e accuracy nel training e validation](Progetto/model1.png)
+
+In entrambi i set si è ottenuta un'accuracy molto alta e una loss molto bassa percui la rete sembra avere ottime performance. Non sembra avere problemi di overfitting perchè la differenza di accuracy tra il validation e il training è di 0.03 punti, praticamente irrilevante. Il modello è stato stoppato a 15 epoche perchè dopo iniziava leggermente ad overfittare. Per valutare meglio la capacità previsiva del modello e in particolare la capacità di generalizzare su un nuovo dataset, si valutano le performance della rete sul test.
+
+```{r, eval=FALSE, warning=FALSE}
+test_datagen<-image_data_generator(rescale = 1/255)
+test_generator <- flow_images_from_directory(
+  test_dir,
+  test_datagen,
+  target_size = c(200, 200),
+  batch_size=150,
+  class_mode = "categorical", 
+  shuffle=FALSE
+)
+
+model1 %>% evaluate(test_generator, steps = 29)
+```
+
+```         
+29/29 [==============================] - 49s 2s/step - loss: 0.3502 - acc: 0.9212
+     loss       acc 
+0.3502393 0.9211800 
+```
+
+Sul test si ottiene un'accuracy molto alta, pari a 0.92 ma più bassa sia di quella osservata sul training sia sul validation; la rete sembra perdere un po' di capacità di generalizzare. Tramite la matrice di confusione si va a vedere nello specifico in quali classi non riesce a generalizzare per fare un'analisi più approfondita del problema. In particolare si sono valutate le metriche di *recall, precision* e *f1score. Precision* indica la proporzione di osservazioni realmente appartenti alla classe prevista rispetto al totale delle osservazioni previste in quella classe. *Recall* indica la proporzioni di osservazioni previste nella classe realmente appartenti alla classe rispetto al totale di osservazioni appartenenti alla stessa classe. Infine *F1score* è definita come la media armonica tra la precisione e il recall.
+
+```{r, eval=FALSE}
+ 
+classeoss<-test_generator$classes
+prev<-predict(model1, test_generator)
+prevclass<-apply(prev, 1, which.max)-1
+
+library(caret)
+conf<- confusionMatrix(as.factor(prevclass), as.factor(classeoss))
+precision<-conf$byClass[, "Pos Pred Value"]
+recall<-conf$byClass[, "Sensitivity"]  
+f1score<- (2*precision*recall)/(precision+recall)
+```
+
+```         
+Confusion Matrix and Statistics
+
+          Reference
+Prediction    0    1    2    3    4
+         0   81    0    0    0    0
+         1    1  290    6   22  191
+         2    0   12 1005   23   24
+         3    7    5   14  188   12
+         4    0   15    9    1 2433
+
+Overall Statistics
+                                         
+               Accuracy : 0.9212         
+                 95% CI : (0.9128, 0.929)
+
+Statistics by Class:
+
+                     Class: 0 Class: 1 Class: 2 Class: 3 Class: 4
+Sensitivity           0.91011  0.90062   0.9720  0.80342   0.9147
+Specificity           1.00000  0.94523   0.9821  0.99074   0.9851
+Pos Pred Value        1.00000  0.56863   0.9445  0.83186   0.9898
+Neg Pred Value        0.99812  0.99164   0.9911  0.98882   0.8793
+```
+
+```         
+F1score
+ Class: 0  Class: 1  Class: 2  Class: 3  Class: 4 
+0.9529412 0.6971154 0.9580553 0.8173913 0.9507620 
+```
+
+Innanzitutto si noti che la corrispondenza tra classi numeriche e etichette iniziali è data da:
+
+-   Classe 0 corrisponde a *basophil;*
+
+-   Classe 1 corrisponde a *eosinophil*;
+
+-   Classe 2 corrisponde a *neutrophil*;
+
+-   Classe 3 corrisponde a *monocyte*;
+
+-   Classe 4 corrisponde a *lymphocyte.*
+
+Per tutte e tre le metriche si nota che per la classe *neutrophil e lymphocyte* si hanno le prestazioni migliori, con valori stabili e molto alti. Questo risultato è coerente con il fatto che per queste classe si hanno il maggior numero di immagini nel training. La classe *basophil* seppur con solo 212 immagini di training riesce a raggiungere valori per le metriche alti e risulta in particolare estramente precisa, classificando nella classe *basophil* soltanto immagini realmente appartenti alla stessa. Le due classi più problematiche risultano essere *eosinophil* e *monocyte,* che, hanno un valore per recall abbastanza alto ma non riescono ad essere precise nelle previsioni; con rispettivamente un *f1score* di 0.69 e 0.82. In particolare solo il 56% delle osservazioni classificate come *eosinophil* appartiene effettivamente a questa classe.
+
+Dalle analisi svolte sul test, si è notato che il problema maggiore della rete è la capacità di generalizzazione per la classe *eosinophil*. Per risolverlo possono essere applicate diversi metodi come la data augmentation mirata alla classe di interesse e il transfer learning per l'estrazione dei pesi di reti neurali già addestrate.
+
+Fare data augmentation significherebbe aumentare ulteriormente il dataset di training già molto corposo e allenare un altro modello su di esso; questo comporterebbe tempi computazionali molto elevati. Inoltre, non si ha la certezza di un miglioramento delle prestazioni perchè nel dataset le classi *basophil* e *monocyte* pur avendo un numero di immagini molto inferiore rispetto a *eosinophil* e essendo quindi anch'esse sbilanciate rispetto alle due classi più numerose, riescono ad avere un'ampia capacità di previsione. Percui il problema della classe potrebbe non essere legato allo sbilanciamento della stessa e aumentare il numero di immagini di training in modo fittizio potrebbe essere inutile. Per questi due motivi si è deciso di abbandonare l'idea di data augmentation e si è passati all'applicazione di metodi di transfer learning.
+
+#### **Transfer learning: Feature extraction**
+
+I metodi di transfer learning sono dei metodi tramite i quali vengono utilizzati dei modelli preaddestrati su dataset molto grandi per trattare il problema di interesse. In questa analisi si è utilizzata la rete vgg16 addestrata sul dataset "ImageNet" che contiene milioni di immagini.
+
+Come primo approccio di transfer learning si è deciso di fare feature extraction, quindi di utilizzare tutti i layer convoluzionali della rete vgg16 e poi allenare una rete neurale analoga alla precedente. La struttura convoluzioinale della rete vgg16 è molto potente in quanto formata da 5 blocchi di 2 o 3 layer convoluzionali, seguiti ognuno da un layer di max pooling.
+
+```{r, eval=FALSE}
+conv_base <- application_vgg16(
+  weights = "imagenet",
+  include_top = FALSE,
+  input_shape = c(200, 200, 3)
+)
+datagen <- image_data_generator(rescale = 1/255)
+extract_features <- function(directory, sample_count) {
+  
+  features <- array(0, dim = c(sample_count, 6, 6, 512))
+  labels <- array(0, dim = c(sample_count))
+  
+  generator <- flow_images_from_directory(
+    directory = directory,
+    generator = datagen,
+    target_size = c(200, 200),
+    batch_size = batch_size,
+    class_mode = "categorical"
+  )
+  
+  i <- 0
+  while (TRUE) {
+    batch <- generator_next(generator)
+    inputs_batch <- batch[[1]]
+    labels_batch <- batch[[2]]
+    
+    # Estrazione delle feature
+    features_batch <- conv_base %>% predict(inputs_batch)
+    
+    # Calcola gli indici per il salvataggio delle feature
+    start_index <- (i * batch_size) + 1
+    end_index <- min((i + 1) * batch_size, sample_count)
+    index_range <- start_index:end_index
+    
+    # Gestione della dimensione effettiva del batch
+    batch_size_actual <- dim(features_batch)[1]
+    features[index_range, , , ] <- features_batch
+    
+    # Converti le label in numeri
+    labels_batch <- apply(labels_batch, 1, which.max) - 1
+    labels[index_range] <- labels_batch
+    
+    i <- i + 1
+    if (i * batch_size >= sample_count)
+      break  
+  }
+  
+  list(
+    features = features,
+    labels = labels
+  ) 
+}
+```
+
+Una volta elaborate le immagini si trasformano in tensori a 2 dimensioni per renderle utilizzabili da qualsiasi metodo di statistical learning. Si sono provati ad applicare altri metodi di statistical learning oltre alle reti neurali, come il boosting o il random forest, ma nessuno di essi funzionava a causa dall'elevata dimensionalità del dato. Si è quindi allenato un modello di rete neurale analogo al precedente con 1 layer denso in meno, per problemi di tipo computazionale.
+
+```{r, eval=FALSE}
+train <- extract_features(train_dir, 7119)
+validation <- extract_features(validation_dir, 3058)
+test <- extract_features(test_dir, 4339)
+
+
+reshape_features <- function(features) {
+  array_reshape(features, dim = c(nrow(features), 6*6*512))
+}
+
+train$features <- reshape_features(train$features)
+validation$features <- reshape_features(validation$features)
+test$features <- reshape_features(test$features)
+y_train<-to_categorical(train$labels)
+y_val<-to_categorical(validation$labels)
+y_test<-to_categorical(test$labels)
+
+modelext <- keras_model_sequential() %>%
+  layer_dense(units = 256, activation = "relu", input_shape = 6*6*512) %>%
+  layer_dropout(rate = 0.5) %>%
+  layer_dense(units = 128, activation = "relu") %>%
+  layer_dropout(0.5)%>%
+  layer_dense(units = 5, activation = "softmax")
+
+modelext %>% compile(
+  optimizer = "adam",
+  loss = "categorical_crossentropy",
+  metrics = c("accuracy")
+)
+
+historyext <- modelext %>% fit(
+  train$features, y_train,
+  epochs = 30,
+  batch_size = 20,
+  validation_data = list(validation$features, y_val)
+)
+plot(historyext)
+```
+
+![Andamento loss e accuracy nelle epoche](Progetto/ftext%20rete%201%20con%20epoche%2030.png)
+
+In questo caso possiamo notare un problema di overfitting, soprattutto dalla discrepanza tra le due loss, dopo la ventesima epoca percui per evitare questo problema si è ristimato il modello con 20 epoche.Con quest'ultimo modello si sono analizzate le capacità sul test set.
+
+```{r, eval=FALSE}
+model%>%save_model_hdf5("transferfeature_extraction.h5")
+modellofeat<-load_model_hdf5("transferfeature_extraction.h5")
+
+classeoss<-test$labels
+modellofeat%>%evaluate(test$features,y_test,batch_size=16,steps=30)
+
+prev<-predict(modellofeat, test$features)
+prevclass<-apply(prev, 1, which.max)-1
+
+conf<- confusionMatrix(as.factor(prevclass), as.factor(classeoss))
+conf
+```
+
+```         
+Confusion Matrix and Statistics
+
+          Reference
+Prediction    0    1    2    3    4
+         0   89    0    0    0    0
+         1    0  255    4   18   66
+         2    0   14  997   11   17
+         3    0   20   23  182   18
+         4    0   33   10    23 2559
+
+Overall Statistics
+                                         
+               Accuracy : 0.9408         
+                 95% CI : (0.9333, 0.9476)
+
+Statistics by Class:
+
+                     Class: 0 Class: 1 Class: 2 Class: 3 Class: 4
+Sensitivity           1.00000  0.79193   0.9642  0.77778   0.9620
+Specificity           1.00000  0.97809   0.9873  0.98514   0.9607
+Pos Pred Value        1.00000  0.74344   0.9596  0.74897   0.9749
+Neg Pred Value        1.00000  0.98323   0.9888  0.98730   0.9411
+```
+
+```         
+F1score
+ Class: 0  Class: 1  Class: 2  Class: 3  Class: 4 
+1.0000000 0.7669193 0.9618945 0.7631032 0.9684070
+```
+
+In questo modello si ottiene sul test un'accuracy molto alta, del 94%, molto simile al valore ottenuto con la prima rete neurale classica. Analizzando le metriche *sensitivity, specificity* e *f1score* si nota subito che analogamente alla rete precedente, nella classificazione delle classi 0, 2 e 4 le performance della rete sono ottime; in particolare in questo caso per la classe *basophil* si hanno performance perfette, ovvero il modello prevede solo e tutte le osservazioni appartenti realmente alla classe stessa. Per la classe *eosinophil* si nota un miglioramento di circa 0.15 per la metrica *precision* che, nonostante un leggero peggioramento per la metrica *recall*, porta a un miglioramento er la metrica *f1 score,* mentre per l'altra classe problematica, *monocyte*, si ha un leggero peggiormento per tutte e tre le metriche.
+
+#### **Transfer learning: Fine tuning**
+
+Come secondo appoccio di transfer learning si è utilizzato il fine tuning, utilizzando la rete vgg16 per la parte convoluzionale del modello. In particolare in questo metodo , tramite la funzione unfreeze_weights, si sono salvati i pesi della rete vgg16 fino al quarto blocco convoluzionale, mentre i pesi dei restanti layer sono stati allenati nuovamente. Successivamente si è applicata una rete neurale classica. Durante l'allenamento delle reti neurali mostrate in precedenza si sono riscontrati diversi problemi a livello di tempistiche computazionali e di memoria, percui si è voluto ridurre ulteriormente le dimensioni delle immagini a 150x150 e si è costruita un'architettura della rete molto più semplice, con un solo layer denso.
+
+```{r, eval=FALSE}
+conv_base <- application_vgg16(
+  weights = "imagenet",
+  include_top = FALSE,
+  input_shape = c(150, 150, 3)
+)
+unfreeze_weights(conv_base, from = "block4_conv1")
+model <- keras_model_sequential() %>%
+  conv_base %>%
+  layer_flatten() %>%
+  layer_dense(units = 256, activation = "relu") %>%
+  layer_dense(units = 5, activation = "softmax")
+```
+
+```         
+Model: "sequential_1"
+________________________________________________________________________________
+ Layer (type)                  Output Shape               Param #    Trainable  
+================================================================================
+ vgg16 (Functional)            (None, 4, 4, 512)          14714688   Y          
+ flatten (Flatten)             (None, 8192)               0          Y          
+ dense_3 (Dense)               (None, 256)                2097408    Y          
+ dense_2 (Dense)               (None, 5)                  1285       Y          
+================================================================================
+Total params: 16813381 (64.14 MB)
+Trainable params: 15077893 (57.52 MB)
+Non-trainable params: 1735488 (6.62 MB)
+```
+
+Si è allenato il modello, modificando il train e il validation generator per adattarli alla nuova dimensionalità delle immagini e lasciando invariati i restanti parametri.
+
+```{r, eval=FALSE}
+model %>% compile(
+  loss = "categorical_crossentropy",
+  optimizer = optimizer_rmsprop(lr = 1e-5),
+  metrics = c("accuracy")
+)
+
+
+train_generator <- flow_images_from_directory(
+  train_dir,
+  train_datagen,
+  target_size = c(150, 150),
+  batch_size = 20,
+  class_mode = "categorical"
+)
+
+
+validation_generator <- flow_images_from_directory(
+  validation_dir,
+  validation_datagen,
+  target_size = c(150, 150),
+  batch_size = 20,
+  class_mode = "categorical"
+)
+
+
+history <- model %>% fit(
+  train_generator,
+  steps_per_epoch = 100,
+  epochs = 30,
+  validation_data = validation_generator,
+  validation_steps = 50
+)
+plot(history)
+model%>%save_model_hdf5("transfervgg16.h5")
+modeltran<- load_model_hdf5("transfervgg16.h5")
+```
+
+![Andamento Loss e accuracy con transfer learning](images/transfer%20vgg16-1.png)
+
+In questo caso le performance su training e validation risultano ancora migliori della precedente raggiungendo sia sul validation che sul training loss pari a 0. Non si hanno problemi di overfitting.
+
+Valuto la performance della rete sul test set.
+
+```{r, eval=FALSE}
+
+#valuto sul test
+test_datagen<-image_data_generator(rescale = 1/255)
+test_generator <- flow_images_from_directory(
+  test_dir,
+  test_datagen,
+  target_size = c(150,150),
+  batch_size=150,
+  class_mode = "categorical", 
+  shuffle=FALSE
+)
+
+modeltran %>% evaluate_generator(test_generator, steps = 29)
+#loss  accuracy 
+#0.1941850 0.9403088
+
+
+prev<-predict(modeltran, test_generator)
+prevclass<-apply(prev, 1, which.max)-1
+classeoss<-test_generator$classes
+
+conf<- confusionMatrix(as.factor(prevclass), as.factor(classeoss))
+precision<-conf$byClass[, "Pos Pred Value"]
+recall<-conf$byClass[, "Sensitivity"]  
+f1score<- (2*precision*recall)/(precision+recall)
+```
+
+```         
+Confusion Matrix and Statistics
+
+          Reference
+Prediction    0    1    2    3    4
+         0   84    0    0    4    0
+         1    2  285    5   30  104
+         2    2    9 1017   40    9
+         3    1    9    3  152    5
+         4    0   24    9    8 2542
+
+Overall Statistics
+                                         
+               Accuracy : 0.9403         
+                 95% CI : (0.9328, 0.9472)
+
+Statistics by Class:
+
+                     Class: 0 Class: 1 Class: 2 Class: 3 Class: 4
+Sensitivity           0.94382  0.88509   0.9836  0.64957   0.9556
+Specificity           0.99906  0.96490   0.9818  0.99683   0.9756
+Pos Pred Value        0.95455  0.66901   0.9443  0.92121   0.9841
+Neg Pred Value        0.99882  0.99054   0.9948  0.98035   0.9328
+```
+
+```         
+F1score
+ Class: 0  Class: 1  Class: 2  Class: 3  Class: 4 
+0.9491547 0.7620283 0.9635494 0.7619022 0.9696406 
+```
+
+In questa rete, l'accuracy leggermente più alta rispetto alla classica rete precedente indica un miglioramento globale della performance della rete. Anche in questo caso la rete presenta dei valori molto alti per tutte e tre le metriche considerate, per la classe 0,2 e 5. Per la classe *eosinophil* si nota un miglioramento di circa 0.1/0.12 per la metrica *precision* che quindi porta a un miglioramento per la metrica *f1 score,* mentre per l'altra classe problematica, *monocyte*, si ha un miglioramento analogo nella *precision* ma un peggioramento nella *recall* che quindi porta a un peggioramento della metrica *f1score*.
+
+In tutte e tre le reti costruite le classi *eosinophil* e *monocyte* rimangono problematiche; questo è dovuto sia dal fatto che l'algoritmo non riesce a distinguerle tra di loro, sia dal fatto che alcune immagini della classe *eosinophil* si confondono con la classe *lymphocyte* e succede la stessa cosa per la classe *monocyte*. Per la classe *monocyte* il confondimento con la classe *lymphocyte* potrebbe essere dovuto al fatto che entrambi fanno parte del sottogruppo degli agrunolociti all'interno dei globuli bianchi.
+
+#### **Conformal prediction**
+
+Come conclusione di questa analisi si è applicato il metodo di conformal prediction per la costruzione del prediction set per tutte le osservazioni del test set. Per ogni osservazione il prediction set corrisponde all'insieme delle classi a cui essa appartiene realmente con probabilità alta, in questo caso con probabilità superiore al 90%. Il modello su cui si è applicata questa tecnica è il modello iniziale ovvero la rete CNN classica.
+
+Il metodo di conformal prediction prevede innanzitutto che il test set originale (TestA) sia diviso in test e calibration set e per questo si sono create delle directory necessarie e reindirizzate le immagini nelle stesse.
+
+```{r, eval=FALSE}
+test_dir_r <- file.path(base_dir, "test")
+dir.create(test_dir_r)
+cal_dir_r <- file.path(base_dir, "cal")
+dir.create(cal_dir_r)
+
+fnames <- paste0("BA_", 1:round(89*0.5), ".jpg")
+file.copy(file.path(basophil_dataset_dir_t, fnames),
+          file.path(test_basophil_dir_r))
+fnames <- paste0("BA_", (round(89*0.5)+1):89, ".jpg")
+file.copy(file.path(basophil_dataset_dir_t, fnames),
+          file.path(cal_basophil_dir_r))
+fnames <- paste0("EO_", 1:round(322*0.5), ".jpg")
+file.copy(file.path(eosinophil_dataset_dir_t, fnames),
+          file.path(test_eosinophil_dir_r))
+fnames <- paste0("EO_", (round(322*0.5)+1):322, ".jpg")
+file.copy(file.path(eosinophil_dataset_dir_t, fnames),
+          file.path(cal_eosinophil_dir_r))
+fnames <- paste0("LY_", 1:round(1034*0.5), ".jpg")
+file.copy(file.path(lymphocyte_dataset_dir_t, fnames),
+          file.path(test_lymphocyte_dir_r))
+fnames <- paste0("LY_",(round(1034*0.5)+1):1034, ".jpg")
+file.copy(file.path(lymphocyte_dataset_dir_t, fnames),
+          file.path(cal_lymphocyte_dir_r))
+fnames <- paste0("SNE_", 1:round(2660*0.5), ".jpg")
+file.copy(file.path(neutrophil_dataset_dir_t, fnames),
+          file.path(test_neutrophil_dir_r))
+fnames <- paste0("SNE_", (round(2660*0.5)+1):2660, ".jpg")
+file.copy(file.path(neutrophil_dataset_dir_t, fnames),
+          file.path(cal_neutrophil_dir_r))
+fnames <- paste0("MO_",1:round(234*0.5), ".jpg")
+file.copy(file.path(monocyte_dataset_dir_t, fnames),
+          file.path(test_monocyte_dir_r))
+fnames <- paste0("MO_",(round(234*0.5)+1):234, ".jpg")
+file.copy(file.path(monocyte_dataset_dir_t, fnames),
+          file.path(cal_monocyte_dir_r))
+
+num_classes<-5
+cal_generator <- flow_images_from_directory(
+  cal_dir_r,
+  test_datagen,
+  target_size = c(200, 200),
+  batch_size=150,
+  class_mode = "categorical", 
+  shuffle=FALSE
+)
+test_generator <- flow_images_from_directory(
+  test_dir_r,
+  test_datagen,
+  target_size = c(200, 200),
+  batch_size=150,
+  class_mode = "categorical", 
+  shuffle=FALSE
+)
+```
+
+Come approccio di conformal predictive si è considerato l'algoritmo Adaptive per la classificazione, costruito nel seguente modo.
+
+```{r, eval=FALSE}
+#calcolo previsioni sul calibration
+prevcal<-predict(model1, cal_generator)
+colnames(prevcal)<-c(1:num_classes)
+
+for (i in 1:cal_generator$n){
+  ord<-as.data.frame(sort(prevcal[i,],decreasing=T))
+  vera<-cal_generator$classes[i]+1
+  ind<-which(rownames(ord)==vera)
+  E[i]<-sum(ord[1:ind,])
+}
+
+#calcolo il quantile della distribuzine delle Ei
+qstar<-quantile(round(E,3),0.90)
+
+#faccio sul test
+prevtest<-predict(model1, test_generator)
+colnames(prevtest)<-c(1:num_classes)
+prevtest<-round(prevtest,3)
+pset<-matrix(NA,test_generator$n , ncol=num_classes)
+covered<-c()
+
+for (f in 1:test_generator$n){
+  ord<-sort(prevtest[f,],decreasing=T)
+  if (ord[1]>=qstar) {
+    cl<-names(ord[1])
+    pset[f,1]<-cl
+  } else {
+    cl<-names(which(cumsum(ord)<qstar))
+    
+    pset[f,c(1:length(cl))]<-cl
+  }
+  covered[f]<-sum(ifelse((test_generator$classes[f]+1) %in% cl, 1, 0))
+}
+pset<-as.data.frame(pset)
+head(pset)
+mean(covered)
+```
+
+```         
+ head(ptest)
+  Prima Seconda Terza Quarta Quinta
+1     0       3     1   <NA>   <NA>
+2     0       3     1      2      4
+3     0       3     1      2   <NA>
+4     1       3     4      0   <NA>
+5     0       3     1      2   <NA>
+6     0    <NA>  <NA>   <NA>   <NA>
+
+mean(covered)
+[1] 0.95574
+```
+
+La matrice pset contiene per ogni osservazione del test il prediction set, ovvero le classi a cui l'osservazione appartiene con probabilià maggiore del 90%. Ad esempio per la prima osservazione il prediction set è dato da classe *basophil*, *eosinophil* e *monocyte* (rispettivamente 0,1,3), mentre per l'osservazione 6 è dato solo dalla classe *basophil*. Questo significa che l'incertezza nella classificazione dell'osservazione 1 è maggiore dell'incertezza nella classificazione della osservazione 6. Infine si può notare che la coverage empirica è di 0.955 percui la probabilità di appartenza teorica pari al 90% è effettivamente rispettata.
+
+### **Conclusioni**
+
+In questo articolo sono stati sviluppati diversi metodi per la classificazione di immagini di globuli bianchi. In tutte le reti convoluzionali costruite si ottengono ottime performance di classificazione sul training e validation e anche ampia capacità di generalizzare sul test. In particolare tutti e tre i modelli riescono ad identificare molto bene i globuli bianchi di tipo *lymphocyte*, *neutrophil* e *basophil* mentre riscontrano dei problemi nell'identificazione di globuli bianchi di tipo *eosinophil* e *monocyte*. Questo risultati sono leggermente migliori quando si utilizzano i metodi di transfer learning ma in generale il problema dell'identificazione delle due classi rimane. Questo può essere dovuto sia alla natura dei globuli stessi, ovvero al fatto che la classe *monocyte* e *lymphocyte* hanno la stessa morfologia di agrunolociti e percui il modello fa fatica a distinguerli; oppure anche dal fatto che, come anticipato, questo dataset è stato reso disponibile per sviluppare modelli di deep learning in grado di classificare anche immagini di scarsa qualità. A questo scopo infatti le immagini contenute nel test set non sono nitide e la loro classificazione è evidentemente più difficile. Infine tramite la costruzione dei prediction set su una porzione di test si sono fornite delle stime intervallari per la reale classe di appartenza, molto utili per il supporto di operatori sanitari nell'identificazione di malformazioni dei globuli bianchi e quindi di diagnosi di malattie correlate.
+
+Il principale problema riscontrato nell'analisi sono stati i tempi computazionali elevati e il cospicuo consumo di memoria, che hanno limitato l'efficienza dell'elaborazione dei dati. Come possibili scenari futuri si consiglia di svolgere analisi più approfondite, con reti convoluzionali più complesse, e provare a applicare altri metodi di statistical learning a seguito dell'operazione di feature extraction.
